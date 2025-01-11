@@ -6,7 +6,7 @@
 
   <groupId>com.github.nouish.ezchestshop</groupId>
   <artifactId>ezchestshop-parent</artifactId>
-  <version>1.8.0-SNAPSHOT</version>
+  <version>1.8.2-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>EzChestShop Parent</name>
@@ -95,6 +95,15 @@
       <snapshots>
         <enabled>false</enabled>
         <updatePolicy>never</updatePolicy>
+      </snapshots>
+    </repository>
+    <repository>
+      <!-- Provides CoreProtect -->
+      <id>playpro-repo</id>
+      <url>https://maven.playpro.com</url>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>daily</updatePolicy>
       </snapshots>
     </repository>
     <repository>

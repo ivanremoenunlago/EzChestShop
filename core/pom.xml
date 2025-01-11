@@ -7,7 +7,7 @@
   <parent>
     <groupId>com.github.nouish.ezchestshop</groupId>
     <artifactId>ezchestshop-parent</artifactId>
-    <version>1.8.0-SNAPSHOT</version>
+    <version>1.8.2-SNAPSHOT</version>
   </parent>
 
   <artifactId>ezchestshop-core</artifactId>
@@ -95,10 +95,6 @@
               <pattern>org.bstats</pattern>
               <shadedPattern>me.deadlight.ezchestshop.internal.bstats</shadedPattern>
             </relocation>
-            <relocation>
-              <pattern>de.tr7zw.changeme.nbtapi</pattern>
-              <shadedPattern>me.deadlight.ezchestshop.internal.nbtapi</shadedPattern>
-            </relocation>
           </relocations>
         </configuration>
         <executions>
@@ -123,7 +119,7 @@
     <dependency>
       <groupId>io.papermc.paper</groupId>
       <artifactId>paper-api</artifactId>
-      <version>1.21.4-R0.1-SNAPSHOT</version>
+      <version>1.21-R0.1-SNAPSHOT</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -202,7 +198,7 @@
     <dependency>
       <groupId>com.palmergames.bukkit.towny</groupId>
       <artifactId>towny</artifactId>
-      <version>0.101.0.3</version>
+      <version>0.101.1.0</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -218,10 +214,10 @@
       <scope>compile</scope>
     </dependency>
     <dependency>
-      <groupId>de.tr7zw</groupId>
-      <artifactId>item-nbt-api</artifactId>
-      <version>2.14.1</version>
-      <scope>compile</scope>
+      <groupId>net.coreprotect</groupId>
+      <artifactId>coreprotect</artifactId>
+      <version>22.4</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 </project>

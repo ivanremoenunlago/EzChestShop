@@ -5,12 +5,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,7 +19,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.google.common.base.Preconditions;
-import de.tr7zw.changeme.nbtapi.NBT;
 import dev.triumphteam.gui.guis.Gui;
 import dev.triumphteam.gui.guis.GuiItem;
 import dev.triumphteam.gui.guis.PaginatedGui;
@@ -37,6 +37,7 @@ import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.chat.HoverEvent;
 import net.md_5.bungee.api.chat.TextComponent;
+import org.apache.commons.lang3.Validate;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Keyed;
@@ -57,7 +58,7 @@ import org.bukkit.inventory.DoubleChestInventory;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
-import org.bukkit.inventory.meta.FireworkMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.permissions.Permissible;
 import org.bukkit.permissions.PermissionAttachmentInfo;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -67,14 +68,16 @@ import org.bukkit.util.io.BukkitObjectOutputStream;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class Utils {
+public final class Utils {
+    private Utils() {}
+
     public static List<Object> onlinePackets = new ArrayList<>();
-    public static List<String> rotations = Arrays.asList("up", "north", "east", "south", "west", "down");
+    public static final List<String> rotations = List.of("up", "north", "east", "south", "west", "down");
 
     public static HashMap<String, Block> blockBreakMap = new HashMap<>();
     public static ConcurrentHashMap<Integer, BlockOutline> activeOutlines = new ConcurrentHashMap<>(); //player uuid, list of outlines
     public static List<UUID> enabledOutlines = new ArrayList<>();
-    private static LanguageManager lm = new LanguageManager();
+    private static final LanguageManager lm = new LanguageManager();
 
     public static NmsHandle nmsHandle;
     public static DatabaseManager databaseManager;
@@ -152,8 +155,18 @@ public class Utils {
      * @return
      * @category ItemUtils
      */
-    public static String ItemToTextCompoundString(ItemStack itemStack) {
-        return NBT.itemStackToNBT(itemStack).toString();
+    public static String itemStackToSnbt(@NotNull ItemStack itemStack) {
+        // This implementation is temporary before moving to Adventure API, and is simply to avoid
+        // using libraries to handle this.
+        String components;
+        if (itemStack.hasItemMeta()) {
+            components = Validate.notNull(itemStack.getItemMeta(), "ItemMeta must not be null").getAsString();
+        } else {
+            components = "{}";
+        }
+
+        return String.format(Locale.ROOT, "{components:%s,count:%d,id:\"%s\"}",
+                components, itemStack.getAmount(), itemStack.getType().getKey());
     }
 
     /**
@@ -236,19 +249,21 @@ public class Utils {
         }
     }
 
+    // Suppressed deprecation; new alternative API is not available in MC 1.21/1.21.1.
+    @SuppressWarnings({"removal", "deprecation"})
     public static String getFinalItemName(ItemStack item) {
         String itemname;
         if (item.hasItemMeta()) {
-            if (item.getItemMeta().hasDisplayName()) {
-                itemname = colorify(item.getItemMeta().getDisplayName());
+            final ItemMeta meta = item.getItemMeta();
+            if (meta.hasDisplayName()) {
+                itemname = colorify(meta.getDisplayName());
             } else if (item.getType() == Material.ENCHANTED_BOOK
-                    && ((EnchantmentStorageMeta) item.getItemMeta()).getStoredEnchants().size() == 1) {
-                EnchantmentStorageMeta emeta = (EnchantmentStorageMeta) item.getItemMeta();
-
-                Map.Entry<Enchantment,Integer> entry = emeta.getStoredEnchants().entrySet().iterator().next();
+                    && meta instanceof EnchantmentStorageMeta enchMeta
+                    && enchMeta.getStoredEnchants().size() == 1) {
+                Map.Entry<Enchantment, Integer> entry = enchMeta.getStoredEnchants().entrySet().iterator().next();
                 itemname = lm.itemEnchantHologram(entry.getKey(), entry.getValue());
-            } else if (item.getItemMeta().hasLocalizedName()) {
-                itemname = item.getItemMeta().getLocalizedName();
+            } else if (meta.hasLocalizedName()) {
+                itemname = meta.getLocalizedName();
             } else {
                 itemname = Utils.capitalizeFirstSplit(item.getType().toString());
             }
@@ -442,13 +457,9 @@ public class Utils {
         for (ItemStack content : player.getInventory().getStorageContents()) {
             if (content == null || content.getType() == Material.AIR) {
                 emptySlots += item.getMaxStackSize();
-            } else {
-                if (isSimilar(content, item) && !(content.getAmount() >= content.getMaxStackSize())) {
-
-                    int remaining = content.getMaxStackSize() - content.getAmount();
-                    emptySlots += remaining;
-
-                }
+            } else if (item.isSimilar(content) && !(content.getAmount() >= content.getMaxStackSize())) {
+                int remaining = content.getMaxStackSize() - content.getAmount();
+                emptySlots += remaining;
             }
         }
 
@@ -461,11 +472,9 @@ public class Utils {
             if (content == null || content.getType() == Material.AIR) {
                 emptySlots += item.getMaxStackSize();
             } else {
-                if (isSimilar(content, item) && !(content.getAmount() >= content.getMaxStackSize())) {
-
+                if (item.isSimilar(content) && !(content.getAmount() >= content.getMaxStackSize())) {
                     int remaining = content.getMaxStackSize() - content.getAmount();
                     emptySlots += remaining;
-
                 }
             }
         }
@@ -473,7 +482,6 @@ public class Utils {
     }
 
     public static int containerEmptyCount(ItemStack[] storageContents, ItemStack item) {
-
         if (storageContents == null) {
             return Integer.MAX_VALUE;
         }
@@ -483,11 +491,9 @@ public class Utils {
             if (content == null || content.getType() == Material.AIR) {
                 emptySlots += item.getMaxStackSize();
             } else {
-                if (isSimilar(content, item) && !(content.getAmount() >= content.getMaxStackSize())) {
-
+                if (item.isSimilar(content) && !(content.getAmount() >= content.getMaxStackSize())) {
                     int remaining = content.getMaxStackSize() - content.getAmount();
                     emptySlots += remaining;
-
                 }
             }
         }
@@ -495,7 +501,6 @@ public class Utils {
     }
 
     public static int howManyOfItemExists(ItemStack[] itemStacks, ItemStack mainItem) {
-
         if (itemStacks == null) {
             return Integer.MAX_VALUE;
         }
@@ -505,13 +510,12 @@ public class Utils {
             if (item == null || item.getType() == Material.AIR) {
                 continue;
             }
-            if (isSimilar(item, mainItem)) {
+            if (mainItem.isSimilar(item)) {
                 amount += item.getAmount();
             }
 
         }
         return amount;
-
     }
 
     public static boolean containerHasEnoughSpace(Inventory container, int amount, ItemStack item) {
@@ -520,11 +524,9 @@ public class Utils {
             if (content == null || content.getType() == Material.AIR) {
                 emptySlots += item.getMaxStackSize();
             } else {
-                if (isSimilar(content, item) && !(content.getAmount() >= content.getMaxStackSize())) {
-
+                if (item.isSimilar(content) && !(content.getAmount() >= content.getMaxStackSize())) {
                     int remaining = content.getMaxStackSize() - content.getAmount();
                     emptySlots += remaining;
-
                 }
             }
         }
@@ -532,28 +534,12 @@ public class Utils {
         return emptySlots >= amount;
     }
 
-    public static boolean amountCheck(int amount) {
-        if (amount == 0) {
-            return false;
-        }
-
-        if (amount < 0) {
-            return false;
-        }
-        return true;
-    }
-
     public static List<String> calculatePossibleAmount(OfflinePlayer offlineCustomer, OfflinePlayer offlineSeller,
                                                        ItemStack[] playerInventory, ItemStack[] storageInventory, double eachBuyPrice, double eachSellPrice,
                                                        ItemStack itemStack) {
-
         List<String> results = new ArrayList<>();
-
-        String buyCount = calculateBuyPossibleAmount(offlineCustomer, playerInventory, storageInventory, eachBuyPrice,
-                itemStack);
-        String sellCount = calculateSellPossibleAmount(offlineSeller, playerInventory, storageInventory, eachSellPrice,
-                itemStack);
-
+        String buyCount = calculateBuyPossibleAmount(offlineCustomer, playerInventory, storageInventory, eachBuyPrice, itemStack);
+        String sellCount = calculateSellPossibleAmount(offlineSeller, playerInventory, storageInventory, eachSellPrice, itemStack);
         results.add(buyCount);
         results.add(sellCount);
         return results;
@@ -609,9 +595,9 @@ public class Utils {
             buyerBalance = Double.MAX_VALUE;
         } else {
             if (hasPlayedBefore(offlinePlayer)) {
-                buyerBalance = Config.useXP ?
-                            XPEconomy.getXP(offlinePlayer) :
-                            EzChestShop.getEconomy().getBalance(offlinePlayer);
+                buyerBalance = Config.useXP
+                        ? XPEconomy.getXP(offlinePlayer)
+                        : EzChestShop.getEconomy().getBalance(offlinePlayer);
             } else {
                 buyerBalance = 0;
             }
@@ -638,20 +624,23 @@ public class Utils {
     }
 
     public static boolean containsAtLeast(Inventory inventory, ItemStack item, int amount) {
-        if (item.getType() == Material.FIREWORK_ROCKET) {
-            int count = 0;
-            for (ItemStack content : inventory.getStorageContents()) {
-                if (content == null || content.getType() == Material.AIR) {
-                    continue;
-                }
-                if (isSimilar(content, item)) {
-                    count += content.getAmount();
+        return countOf(inventory, item) >= amount;
+    }
+
+    private static int countOf(@NotNull Inventory inventory, @NotNull ItemStack target) {
+        int count = 0;
+        for (@Nullable ItemStack item : inventory.getContents()) {
+            if (item == null)
+                continue;
+            if (target.isSimilar(item)) {
+                try {
+                    count = Math.addExact(count, item.getAmount());
+                } catch (ArithmeticException ignored) {
+                    return Integer.MAX_VALUE;
                 }
             }
-            return count >= amount;
-        } else {
-            return inventory.containsAtLeast(item, amount);
         }
+        return count;
     }
 
     /*
@@ -667,7 +656,7 @@ public class Utils {
         HashMap<Integer, ItemStack> leftover = new HashMap<>();
         for (int i = 0; i < stacks.length; i++) {
             ItemStack stack = stacks[i];
-            if (stack == null || stack.getType() == Material.AIR) {
+            if (stack.getType() == Material.AIR) {
                 continue;
             }
             if (stack.getType() == Material.FIREWORK_ROCKET) {
@@ -677,7 +666,7 @@ public class Utils {
                     if (item == null || item.getType() == Material.AIR) {
                         continue;
                     }
-                    if (isSimilar(item, stack)) {
+                    if (item.isSimilar(stack)) {
                         int newAmount = item.getAmount() - amount;
                         if (newAmount > 0) {
                             item.setAmount(newAmount);
@@ -702,104 +691,29 @@ public class Utils {
         return leftover;
     }
 
-    public static boolean isSimilar(@Nullable ItemStack stack1, @Nullable ItemStack stack2) {
-        if (stack1 == null || stack2 == null) {
-            return false;
-        } else if (stack1 == stack2) {
-            return true;
-        } else {
-            if (stack1.getType() == Material.FIREWORK_ROCKET && stack2.getType() == Material.FIREWORK_ROCKET) {
-                FireworkMeta meta1 = (FireworkMeta) stack1.getItemMeta();
-                FireworkMeta meta2 = (FireworkMeta) stack2.getItemMeta();
-                if (meta1 != null && meta2 != null) {
-                    if (meta1.getEffects().size() != meta2.getEffects().size()) {
-                        return false;
-                    }
-                    if (meta1.getPower() != meta2.getPower()) {
-                        return false;
-                    }
-                    for (int i = 0; i < meta1.getEffects().size(); i++) {
-                        if (!meta1.getEffects().get(i).equals(meta2.getEffects().get(i))) {
-                            return false;
-                        }
-                    }
-                    if (meta1.hasDisplayName() != meta2.hasDisplayName()) {
-                        return false;
-                    } else if (meta1.hasDisplayName()) {
-                        if (!meta1.getDisplayName().equals(meta2.getDisplayName())) {
-                            return false;
-                        }
-                    }
-
-                    if (meta1.hasLore() != meta2.hasLore()) {
-                        return false;
-                    } else if (meta1.hasLore()) {
-                        if (!meta1.getLore().equals(meta2.getLore())) {
-                            return false;
-                        }
-                    }
-
-                    if (meta1.hasCustomModelData() != meta2.hasCustomModelData()) {
-                        return false;
-                    } else if (meta1.hasCustomModelData()) {
-                        if (meta1.getCustomModelData() != meta2.getCustomModelData()) {
-                            return false;
-                        }
-                    }
-
-                    if (meta1.hasEnchants() != meta2.hasEnchants()) {
-                        return false;
-                    } else if (meta1.hasEnchants()) {
-                        if (!meta1.getEnchants().equals(meta2.getEnchants())) {
-                            return false;
-                        }
-                    }
-
-                    if (!meta1.getItemFlags().equals(meta2.getItemFlags())) {
-                        return false;
-                    }
-                    if (meta1.getAttributeModifiers() != null) {
-                        if (!meta1.getAttributeModifiers().equals(meta2.getAttributeModifiers())) {
-                            return false;
-                        }
-                    } else if (meta2.getAttributeModifiers() != null) {
-                        return false;
-                    }
-
-                    if (meta1.isUnbreakable() != meta2.isUnbreakable()) {
-                        return false;
-                    }
-                }
-            } else if (!stack1.isSimilar(stack2)) {
-                return false;
-            }
-            return true;
-        }
-    }
-
-    public static boolean isInteger(String str) {
+    public static OptionalInt tryParseInt(@Nullable String str) {
         try {
-            int num = Integer.parseInt(str);
-            return true;
-        } catch (Exception e) {
-            return false;
+            // Integer.parseInt(String) will throw NumberFormatException for null.
+            //noinspection DataFlowIssue
+            int value = Integer.parseInt(str);
+            return OptionalInt.of(value);
+        } catch (NumberFormatException ignored) {
+            return OptionalInt.empty();
         }
     }
 
     public static String getNextRotation(String current) {
         if (current == null)
             current = Config.settings_defaults_rotation;
-        int i = rotations.indexOf(current);
-        String result = i == rotations.size() - 1 ? rotations.get(0) : rotations.get(i + 1);
-        return result;
+        int index = rotations.indexOf(current);
+        return index == rotations.size() - 1 ? rotations.getFirst() : rotations.get(index + 1);
     }
 
     public static String getPreviousRotation(String current) {
         if (current == null)
             current = Config.settings_defaults_rotation;
-        int i = rotations.indexOf(current);
-        String result = i == 0 ? rotations.get(rotations.size() - 1) : rotations.get(i - 1);
-        return result;
+        int index = rotations.indexOf(current);
+        return index == 0 ? rotations.getLast() : rotations.get(index - 1);
     }
 
     /**
@@ -829,15 +743,15 @@ public class Utils {
         final Pattern hexPattern = Pattern.compile(startTag + "([A-Fa-f0-9]{6})" + endTag);
         final char COLOR_CHAR = ChatColor.COLOR_CHAR;
         Matcher matcher = hexPattern.matcher(message);
-        StringBuffer buffer = new StringBuffer(message.length() + 4 * 8);
+        StringBuilder builder = new StringBuilder(message.length() + 4 * 8);
         while (matcher.find()) {
             String group = matcher.group(1);
-            matcher.appendReplacement(buffer, COLOR_CHAR + "x"
+            matcher.appendReplacement(builder, COLOR_CHAR + "x"
                     + COLOR_CHAR + group.charAt(0) + COLOR_CHAR + group.charAt(1)
                     + COLOR_CHAR + group.charAt(2) + COLOR_CHAR + group.charAt(3)
                     + COLOR_CHAR + group.charAt(4) + COLOR_CHAR + group.charAt(5));
         }
-        return matcher.appendTail(buffer).toString();
+        return matcher.appendTail(builder).toString();
     }
 
     public enum FormatType {
@@ -940,28 +854,23 @@ public class Utils {
 
     public static EzShop isPartOfTheChestShop(Location location) {
         Block block = location.getBlock();
-        if (block.getType() == Material.CHEST || block.getType() == Material.TRAPPED_CHEST) {
-            Chest chest = (Chest) block.getState();
-            if (chest.getInventory().getHolder() instanceof DoubleChest) {
-                DoubleChest doubleChest = (DoubleChest) chest.getInventory().getHolder();
-                Chest left = (Chest) doubleChest.getLeftSide();
-                Chest right = (Chest) doubleChest.getRightSide();
-                //check if either of the chests is a shop
-                if (ShopContainer.isShop(left.getLocation()) || ShopContainer.isShop(right.getLocation())) {
-                    //return the part that is a shop
-                    if (ShopContainer.isShop(left.getLocation())) {
-                        return ShopContainer.getShop(left.getLocation());
-                    } else {
-                        return ShopContainer.getShop(right.getLocation());
-                    }
-                }
+
+        if (block.getType() != Material.CHEST && block.getType() != Material.TRAPPED_CHEST) {
+            return null;
+        }
+
+        if (block.getState() instanceof Chest chest && chest.getInventory().getHolder(false) instanceof DoubleChest doubleChest) {
+            Chest left = (Chest) Objects.requireNonNull(doubleChest.getLeftSide(), "doubleChest.getLeftSide()");
+            EzShop leftShop = ShopContainer.getShop(left.getLocation());
+            if (leftShop != null) {
+                return leftShop;
             } else {
-                return null;
+                Chest right = (Chest) Objects.requireNonNull(doubleChest.getRightSide(), "doubleChest.getRightSide()");
+                return ShopContainer.getShop(right.getLocation());
             }
         }
         return null;
     }
-
 
     public static List<UUID> getAdminsForShop(EzShop shop) {
         List<UUID> admins = new ArrayList<>();
@@ -1020,31 +929,22 @@ public class Utils {
                     continue;
                 }
 
-                if (Utils.getBlockInventory(shop.getLocation().getBlock()) == null) {
+                Inventory inventory = Utils.getBlockInventory(shop.getLocation().getBlock());
+                if (inventory == null) {
                     continue;
                 }
 
-                if (Utils.getBlockInventory(shop.getLocation().getBlock()).isEmpty()) {
-
-                    //then we check if the shop is in the area
-                    if (shop.getLocation().getWorld().equals(player.getWorld())) {
-                        if (shop.getLocation().distance(player.getLocation()) <= 80) {
-                            emptyShops.add(shop.getLocation().getBlock());
-                        }
-                    }
-                } else {
+                if (!inventory.isEmpty()) {
                     //then we check if the shop inventory has at least 1 item required for the shop
                     ItemStack shopItem = shop.getShopItem().clone();
-                    Inventory inventory = Utils.getBlockInventory(shop.getLocation().getBlock());
                     if (containsAtLeast(inventory, shopItem, 1)) {
                         continue;
                     }
+                }
 
-                    //then we check if the shop is in the area
-                    if (shop.getLocation().getWorld().equals(player.getWorld())) {
-                        if (shop.getLocation().distance(player.getLocation()) <= 80) {
-                            emptyShops.add(shop.getLocation().getBlock());
-                        }
+                if (shop.getLocation().getWorld().equals(player.getWorld())) {
+                    if (shop.getLocation().distance(player.getLocation()) <= 80) {
+                        emptyShops.add(shop.getLocation().getBlock());
                     }
                 }
             }
@@ -1082,5 +982,4 @@ public class Utils {
         container.set(EzChestShopConstants.ROTATION_KEY, PersistentDataType.STRING, shop.getSettings().getRotation());
         return true;
     }
-
 }

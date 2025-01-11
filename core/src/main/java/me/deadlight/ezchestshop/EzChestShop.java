@@ -5,12 +5,13 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.OptionalInt;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import com.github.Anon8281.universalScheduler.UniversalScheduler;
 import com.github.Anon8281.universalScheduler.scheduling.schedulers.TaskScheduler;
-import de.tr7zw.changeme.nbtapi.NBT;
 import me.deadlight.ezchestshop.commands.CommandCheckProfits;
 import me.deadlight.ezchestshop.commands.EcsAdmin;
 import me.deadlight.ezchestshop.commands.MainCommands;
@@ -43,7 +44,8 @@ import me.deadlight.ezchestshop.utils.objects.EzShop;
 import me.deadlight.ezchestshop.utils.worldguard.FlagRegistry;
 import me.deadlight.ezchestshop.version.BuildInfo;
 import me.deadlight.ezchestshop.version.GitHubUtil;
-import net.kyori.adventure.translation.Translator;
+import net.coreprotect.CoreProtect;
+import net.coreprotect.CoreProtectAPI;
 import net.milkbowl.vault.economy.Economy;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.AdvancedPie;
@@ -51,21 +53,31 @@ import org.bstats.charts.DrilldownPie;
 import org.bstats.charts.SimplePie;
 import org.bstats.charts.SingleLineChart;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static net.kyori.adventure.text.Component.text;
+import static net.kyori.adventure.text.format.NamedTextColor.RED;
+
 public final class EzChestShop extends JavaPlugin {
-    private static Economy econ = null;
+    private static Economy economy = null;
     public static boolean economyPluginFound = true;
 
     public static boolean slimefun = false;
     public static boolean towny = false;
     public static boolean worldguard = false;
     public static boolean advancedregionmarket = false;
+    private static boolean coreProtect;
+
+    private static CoreProtectAPI coreProtectAPI;
 
     private static TaskScheduler scheduler;
 
@@ -131,7 +143,7 @@ public final class EzChestShop extends JavaPlugin {
 
         if (minecraftVersion == null) {
             OptionalInt dataVersion = VersionUtil.getDataVersion();
-            String dataVersionInfo = dataVersion.isPresent() ? String.valueOf(dataVersion.getAsInt()) : "Unknown";
+            String dataVersionInfo = dataVersion.isPresent() ? Integer.toString(dataVersion.getAsInt()) : "<Unknown>";
             logger().error("Unsupported version: {} (Data version: {})", Bukkit.getVersion(), dataVersionInfo);
             logger().error("Supported versions: {}", VersionUtil.getSupportedVersions());
             logger().error("The server will continue to load, but EzChestShop will be disabled. "
@@ -142,10 +154,6 @@ public final class EzChestShop extends JavaPlugin {
         }
 
         logger().info("Detected Minecraft version {} (Data version: {})", minecraftVersion.getVersion(), minecraftVersion.getDataVersion());
-
-        if (!NBT.preloadApi()) {
-            logger().warn("The bundled NBT API is not compatible with this Minecraft version, though this only (potentially) impacts use of the /checkprofits command.");
-        }
 
         scheduler = UniversalScheduler.getScheduler(this);
         saveDefaultConfig();
@@ -169,8 +177,8 @@ public final class EzChestShop extends JavaPlugin {
         economyPluginFound = setupEconomy();
         if (!economyPluginFound) {
             Config.useXP = true;
-            logger().warn("Cannot find vault or economy plugin. Switching to XP based economy... Please note that you need vault and at least one economy plugin installed to use a money based system.");
-            logger().warn("This fallback feature (XP based economy) will be removed in future versions of EzChestShopReborn!");
+            logger().warn("*** Cannot find vault or economy plugin. Switching to XP based economy... Please note that you need vault and at least one economy plugin installed to use a money based system.");
+            getComponentLogger().warn(text("*** This fallback feature (XP based economy) will be removed in future versions of EzChestShopReborn!", RED));
         }
 
         LanguageManager.loadLanguages();
@@ -202,6 +210,15 @@ public final class EzChestShop extends JavaPlugin {
             logger().info("Towny integration enabled.");
         }
 
+        Plugin coPlugin = getServer().getPluginManager().getPlugin("CoreProtect");
+        // Must check if null first, because the class CoreProtect will otherwise be unavailable on classpath.
+        //noinspection ConditionCoveredByFurtherCondition
+        if (coPlugin != null && coPlugin instanceof CoreProtect co) {
+            coreProtectAPI = co.getAPI();
+            coreProtect = true;
+            logger().info("CoreProtect integration enabled.");
+        }
+
         registerListeners();
         registerCommands();
         registerTabCompleters();
@@ -219,24 +236,42 @@ public final class EzChestShop extends JavaPlugin {
 
         // TODO automatic version check
         if (Config.notify_updates) {
-            checkForUpdates();
+            final long tickDurationInMillis = 50;
+            getScheduler().runTaskTimerAsynchronously(
+                    this::checkForUpdates,
+                    Math.divideExact(TimeUnit.SECONDS.toMillis(30), tickDurationInMillis),
+                    Math.divideExact(TimeUnit.HOURS.toMillis(6), tickDurationInMillis));
         }
 
         // The plugin started without encountering unrecoverable problems.
         started = true;
     }
 
+    public void tellCoreProtectToTrackChangesAt(@NotNull Player player, @NotNull Location location) {
+        if (!coreProtect || !Config.coreprotect_integration || coreProtectAPI == null) {
+            // CoreProtect integration disabled.
+            return;
+        }
+
+        // This indicates to CoreProtect that it should track changes to the inventory at this
+        // location immediately following this call.
+        coreProtectAPI.logContainerTransaction(player.getName(), location);
+    }
+
     private void checkForUpdates() {
-        BuildInfo current = BuildInfo.CURRENT;
+        String currentBuildName = BuildInfo.CURRENT.isStable()
+                ? BuildInfo.CURRENT.getId()
+                : BuildInfo.CURRENT.getId() + " (" + BuildInfo.CURRENT.getBranch() + ")";
+        logger().info("Checking for updates. Current version: {}.", currentBuildName);
         BuildInfo latest = null;
         GitHubUtil.GitHubStatusLookup status;
 
         try {
-            if (current.isStable()) {
+            if (BuildInfo.CURRENT.isStable()) {
                 latest = GitHubUtil.lookupLatestRelease();
-                status = GitHubUtil.compare(latest.getId(), current.getId());
+                status = GitHubUtil.compare(latest.getId(), BuildInfo.CURRENT.getId());
             } else {
-                status = GitHubUtil.compare(GitHubUtil.MAIN_BRANCH, current.getId());
+                status = GitHubUtil.compare(BuildInfo.CURRENT.getBranch(), BuildInfo.CURRENT.getId());
             }
         } catch (IOException e) {
             logger().warn("Failed to determine the latest version!", e);
@@ -244,11 +279,12 @@ public final class EzChestShop extends JavaPlugin {
         }
 
         if (status.isBehind()) {
-            if (current.isStable()) {
+            if (BuildInfo.CURRENT.isStable()) {
                 logger().warn("A newer version of EzChestShopReborn is available: {}.", latest.getId());
                 logger().warn("Download at: https://github.com/nouish/EzChestShop/releases/tag/{}", latest.getId());
             } else {
                 logger().warn("You are running an outdated snapshot of EzChestShopReborn! The latest snapshot is {} commits ahead.", status.getDistance());
+                logger().warn("Downloads are available from GitHub (must be logged in): {}", EzChestShopConstants.GITHUB_LINK);
             }
         } else if (status.isIdentical() || status.isAhead()) {
             logger().info("You are running the latest version of EzChestShopReborn.");
@@ -268,7 +304,7 @@ public final class EzChestShop extends JavaPlugin {
             Map<String, Map<String, Integer>> result = new HashMap<>();
             Map<String, Integer> entry = new HashMap<>();
             if (economyPluginFound) {
-                entry.put(econ.getName(), 1);
+                entry.put(economy.getName(), 1);
                 result.put("Vault", entry);
             } else {
                 entry.put("XP", 1);
@@ -282,9 +318,9 @@ public final class EzChestShop extends JavaPlugin {
             Map<String, Map<String, Integer>> result = new HashMap<>();
 
             for (Player player : Bukkit.getOnlinePlayers()) {
-                String localeString = player.getLocale().toLowerCase(Locale.ROOT);
-                Locale locale = Translator.parseLocale(localeString);
-                String language = locale != null ? locale.getDisplayLanguage(Locale.ENGLISH) : "<Unknown>";
+                Locale locale = player.locale();
+                String localeString = locale.toString().toLowerCase(Locale.ROOT);
+                String language = locale.getDisplayLanguage(Locale.ENGLISH);
                 Map<String, Integer> entry = result.computeIfAbsent(language, ignored -> new HashMap<>());
                 entry.merge(localeString, 1, Integer::sum);
             }
@@ -357,42 +393,47 @@ public final class EzChestShop extends JavaPlugin {
     }
 
     private void registerListeners() {
-        getServer().getPluginManager().registerEvents(new ChestOpeningListener(), this);
-        getServer().getPluginManager().registerEvents(new BlockBreakListener(), this);
-        getServer().getPluginManager().registerEvents(new BlockPlaceListener(), this);
-        getServer().getPluginManager().registerEvents(new PlayerTransactionListener(), this);
-        getServer().getPluginManager().registerEvents(new ChatListener(), this);
-        getServer().getPluginManager().registerEvents(new BlockPistonExtendListener(), this);
-        getServer().getPluginManager().registerEvents(new CommandCheckProfits(), this);
-        getServer().getPluginManager().registerEvents(new UpdateChecker(), this);
-        getServer().getPluginManager().registerEvents(new PlayerJoinListener(), this);
-        getServer().getPluginManager().registerEvents(new ChestShopBreakPrevention(), this);
+        PluginManager pluginManager = getServer().getPluginManager();
+        pluginManager.registerEvents(new ChestOpeningListener(), this);
+        pluginManager.registerEvents(new BlockBreakListener(), this);
+        pluginManager.registerEvents(new BlockPlaceListener(), this);
+        pluginManager.registerEvents(new PlayerTransactionListener(), this);
+        pluginManager.registerEvents(new ChatListener(), this);
+        pluginManager.registerEvents(new BlockPistonExtendListener(), this);
+        pluginManager.registerEvents(new CommandCheckProfits(), this);
+        pluginManager.registerEvents(new UpdateChecker(), this);
+        pluginManager.registerEvents(new PlayerJoinListener(), this);
+        pluginManager.registerEvents(new ChestShopBreakPrevention(), this);
         // Add Config check over here, to change the Shop display varient.
         // PlayerLooking is less laggy but probably harder to spot.
         if (Config.holodistancing) {
-            getServer().getPluginManager().registerEvents(new PlayerCloseToChestListener(), this);
+            pluginManager.registerEvents(new PlayerCloseToChestListener(), this);
         } else {
-            getServer().getPluginManager().registerEvents(new PlayerLookingAtChestShop(), this);
-            getServer().getPluginManager().registerEvents(new PlayerLeavingListener(), this);
+            pluginManager.registerEvents(new PlayerLookingAtChestShop(), this);
+            pluginManager.registerEvents(new PlayerLeavingListener(), this);
         }
         //This is for integration with AdvancedRegionMarket
         if (advancedregionmarket) {
-            getServer().getPluginManager().registerEvents(new AdvancedRegionMarket(), this);
+            pluginManager.registerEvents(new AdvancedRegionMarket(), this);
         }
     }
 
     private void registerCommands() {
-        PluginCommand ecs = getCommand("ecs");
-        PluginCommand ecsadmin = getCommand("ecsadmin");
+        PluginCommand ecs = getCommandOrThrow("ecs");
+        PluginCommand ecsadmin = getCommandOrThrow("ecsadmin");
         ecs.setExecutor(new MainCommands());
         ecsadmin.setExecutor(new EcsAdmin());
-        getCommand("checkprofits").setExecutor(new CommandCheckProfits());
+        getCommandOrThrow("checkprofits").setExecutor(new CommandCheckProfits());
     }
 
     private void registerTabCompleters() {
-        getCommand("ecs").setTabCompleter(new MainCommands());
-        getCommand("ecsadmin").setTabCompleter(new EcsAdmin());
-        getCommand("checkprofits").setTabCompleter(new CommandCheckProfits());
+        getCommandOrThrow("ecs").setTabCompleter(new MainCommands());
+        getCommandOrThrow("ecsadmin").setTabCompleter(new EcsAdmin());
+        getCommandOrThrow("checkprofits").setTabCompleter(new CommandCheckProfits());
+    }
+
+    private @NotNull PluginCommand getCommandOrThrow(@NotNull String name) {
+        return Objects.requireNonNull(getCommand(name), () -> "Undefined command: " + name + ".");
     }
 
     @Override
@@ -446,12 +487,12 @@ public final class EzChestShop extends JavaPlugin {
         if (rsp == null) {
             return false;
         }
-        econ = rsp.getProvider();
-        return econ != null;
+        economy = rsp.getProvider();
+        return true;
     }
 
     public static Economy getEconomy() {
-        return econ;
+        return economy;
     }
 
     public DatabaseManager getDatabase() {
