@@ -191,6 +191,12 @@ public class ShopContainer {
         }).count();
     }
 
+    public static int getShopCount(UUID uuid, World world) {
+        return (int) getShopFromOwner(uuid).stream().filter(ezShop -> {
+            if (world == null) return false;
+            return world.equals(ezShop.getLocation().getWorld());
+        }).count();
+    }
     /**
      * Query the Database to retrieve all Shops a player owns.
      *
@@ -199,6 +205,10 @@ public class ShopContainer {
      */
     public static int getShopCount(Player p) {
         return getShopFromOwner(p.getUniqueId()).size();
+    }
+
+    public static int getShopCount(UUID uuid) {
+        return getShopFromOwner(uuid).size();
     }
 
     /**

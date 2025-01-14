@@ -150,6 +150,7 @@ public class ChestOpeningListener implements Listener {
                         LuckPerms luckPerms = LuckPermsProvider.get();
                         UserManager userManager = luckPerms.getUserManager();
                         User ownerPlayer = userManager.loadUser(UUID.fromString(owneruuid)).join();
+                        System.out.println(owneruuid);
 
                         System.out.println("Permission limitation functionality is enabled.");
 
@@ -192,7 +193,7 @@ public class ChestOpeningListener implements Listener {
                         String rawId = dataContainer.get(EzChestShopConstants.OWNER_KEY, PersistentDataType.STRING);
                         Preconditions.checkNotNull(rawId);
                         OfflinePlayer offlinePlayerOwner = Bukkit.getOfflinePlayer(UUID.fromString(rawId));
-                        int shops = ShopContainer.getShopCount(Objects.requireNonNull(offlinePlayerOwner.getPlayer())); // Current number of shops owned by the player.
+                        int shops = ShopContainer.getShopCount(Objects.requireNonNull(UUID.fromString(owneruuid))); // Current number of shops owned by the player.
                         System.out.println("Current number of shops owned by the player: " + shops);
                         // If the player has exceeded the limit
                         if (shops > maxShops) {
