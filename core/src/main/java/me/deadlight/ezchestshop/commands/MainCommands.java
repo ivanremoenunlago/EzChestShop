@@ -67,49 +67,94 @@ public class MainCommands implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
-        System.out.println("Command received: " + command.getName());
-        System.out.println("Arguments: " + Arrays.toString(args));
         if (sender instanceof Player) {
             Player player = (Player) sender;
-            System.out.println("Player: " + player.getName());
+
+            System.out.println("[DEBUG] Comando ejecutado por el jugador: " + player.getName());
 
             if (args.length > 0) {
-                System.out.println("Main argument: " + args[0]);
                 String mainarg = args[0];
                 Block target = getCorrectBlock(player.getTargetBlockExact(6));
-                System.out.println("Target block: " + (target != null ? target.getType() : "null"));
 
-                // Depura cada condición
+                System.out.println("[DEBUG] Argumento principal recibido: " + mainarg);
+
                 if (mainarg.equalsIgnoreCase("create") && target != null) {
-                    System.out.println("Executing create command...");
+                    System.out.println("[DEBUG] Comando 'create' detectado. Validando argumentos...");
+
                     if (args.length >= 3) {
                         if (Utils.isNumeric(args[1]) && Utils.isNumeric(args[2])) {
-                            System.out.println("Prices are numeric...");
                             if (isPositive(Double.parseDouble(args[1])) && isPositive(Double.parseDouble(args[2]))) {
-                                System.out.println("Prices are positive...");
+                                System.out.println("[DEBUG] Precios válidos: " + args[1] + ", " + args[2]);
+
                                 if (Config.permissions_create_shop_enabled) {
+                                    System.out.println("[DEBUG] Verificando permisos para crear tiendas...");
+
                                     int maxShopsWorld = Utils.getMaxPermission(player,
                                             "ecs.shops.limit." + player.getWorld().getName() + ".", -2);
-                                    System.out.println("Max shops in world: " + maxShopsWorld);
-                                    // Resto del flujo...
+                                    if (maxShopsWorld == -2) {
+                                        int maxShops = Utils.getMaxPermission(player, "ecs.shops.limit.");
+                                        maxShops = maxShops == -1 ? 10000 : maxShops;
+                                        int shops = ShopContainer.getShopCount(player);
+
+                                        if (shops >= maxShops) {
+                                            System.out.println("[DEBUG] Límite de tiendas alcanzado a nivel global: " + maxShops);
+                                            player.sendMessage(lm.maxShopLimitReached(maxShops));
+                                            return false;
+                                        }
+                                    } else {
+                                        maxShopsWorld = maxShopsWorld == -1 ? 10000 : maxShopsWorld;
+                                        int shops = ShopContainer.getShopCount(player, player.getWorld());
+
+                                        if (shops >= maxShopsWorld) {
+                                            System.out.println("[DEBUG] Límite de tiendas alcanzado para el mundo: " + maxShopsWorld);
+                                            player.sendMessage(lm.maxShopLimitReached(maxShopsWorld));
+                                            return false;
+                                        }
+                                    }
+                                }
+
+                                try {
+                                    System.out.println("[DEBUG] Creando tienda...");
+                                    createShop(player, args, target);
+                                    System.out.println("[DEBUG] Tienda creada con éxito.");
+                                } catch (IOException e) {
+                                    System.err.println("[ERROR] Error al crear la tienda: " + e.getMessage());
+                                    e.printStackTrace();
                                 }
                             } else {
+                                System.out.println("[DEBUG] Precios negativos detectados.");
                                 player.sendMessage(lm.negativePrice());
                             }
                         } else {
+                            System.out.println("[DEBUG] Argumentos no numéricos detectados.");
                             sendHelp(player);
                         }
                     } else {
+                        System.out.println("[DEBUG] Argumentos insuficientes para el comando 'create'.");
                         player.sendMessage(lm.notenoughARGS());
                     }
+                } else if (mainarg.equalsIgnoreCase("remove") && target != null) {
+                    System.out.println("[DEBUG] Comando 'remove' detectado. Procesando eliminación de tienda...");
+                    removeShop(player, args, target);
+                } else if (mainarg.equalsIgnoreCase("settings") && target != null) {
+                    System.out.println("[DEBUG] Comando 'settings' detectado. Abriendo configuración de tienda...");
+                    changeSettings(player, args, target);
+                } else if (mainarg.equalsIgnoreCase("version")) {
+                    System.out.println("[DEBUG] Comando 'version' detectado. Enviando versión...");
+                    Utils.sendVersionMessage(player);
+                } else if (mainarg.equalsIgnoreCase("emptyshops")) {
+                    System.out.println("[DEBUG] Comando 'emptyshops' detectado. Procesando tiendas vacías...");
+                    emptyShopsCommand(player);
                 } else {
-                    System.out.println("Main argument did not match a valid command.");
+                    System.out.println("[DEBUG] Comando desconocido: " + mainarg);
                     sendHelp(player);
                 }
             } else {
+                System.out.println("[DEBUG] No se proporcionaron argumentos. Enviando ayuda...");
                 sendHelp(player);
             }
         } else {
+            System.out.println("[DEBUG] Comando ejecutado desde la consola. Acción no permitida.");
             sender.sendMessage(lm.consoleNotAllowed());
         }
 
