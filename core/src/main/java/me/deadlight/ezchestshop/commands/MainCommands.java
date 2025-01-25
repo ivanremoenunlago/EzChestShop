@@ -91,10 +91,18 @@ public class MainCommands implements CommandExecutor, TabCompleter {
 
                                     int maxShopsWorld = Utils.getMaxPermission(player,
                                             "ecs.shops.limit." + player.getWorld().getName() + ".", -2);
+                                    System.out.println("[DEBUG] Permiso máximo para el mundo obtenido: " + maxShopsWorld);
+
                                     if (maxShopsWorld == -2) {
+                                        System.out.println("[DEBUG] No se encontró un límite específico para el mundo. Verificando límite global...");
                                         int maxShops = Utils.getMaxPermission(player, "ecs.shops.limit.");
+                                        System.out.println("[DEBUG] Permiso máximo global obtenido: " + maxShops);
+
                                         maxShops = maxShops == -1 ? 10000 : maxShops;
+                                        System.out.println("[DEBUG] Límite global ajustado (si era -1): " + maxShops);
+
                                         int shops = ShopContainer.getShopCount(player);
+                                        System.out.println("[DEBUG] Tiendas actuales del jugador: " + shops);
 
                                         if (shops >= maxShops) {
                                             System.out.println("[DEBUG] Límite de tiendas alcanzado a nivel global: " + maxShops);
@@ -102,8 +110,12 @@ public class MainCommands implements CommandExecutor, TabCompleter {
                                             return false;
                                         }
                                     } else {
+                                        System.out.println("[DEBUG] Se encontró un límite específico para el mundo. Procesando...");
                                         maxShopsWorld = maxShopsWorld == -1 ? 10000 : maxShopsWorld;
+                                        System.out.println("[DEBUG] Límite mundial ajustado (si era -1): " + maxShopsWorld);
+
                                         int shops = ShopContainer.getShopCount(player, player.getWorld());
+                                        System.out.println("[DEBUG] Tiendas actuales del jugador en este mundo: " + shops);
 
                                         if (shops >= maxShopsWorld) {
                                             System.out.println("[DEBUG] Límite de tiendas alcanzado para el mundo: " + maxShopsWorld);
@@ -160,6 +172,7 @@ public class MainCommands implements CommandExecutor, TabCompleter {
 
         return false;
     }
+
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command cmd, String label, String[] args) {

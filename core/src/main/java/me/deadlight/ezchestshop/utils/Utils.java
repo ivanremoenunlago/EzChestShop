@@ -404,33 +404,52 @@ public final class Utils {
      * Then the returned result will be -1
      */
     public static int getMaxPermission(Permissible permissible, String permission, int defaultMax) {
-        if (permissible.isOp() || permissible.hasPermission("ecs.admin"))
+        System.out.println("[DEBUG] getMaxPermission iniciado para: " + permission + " con defaultMax: " + defaultMax);
+
+        if (permissible.isOp() || permissible.hasPermission("ecs.admin")) {
+            System.out.println("[DEBUG] Usuario tiene permisos de operador o 'ecs.admin'. Retornando -1 (sin límite).");
             return -1;
+        }
 
         final AtomicInteger max = new AtomicInteger(defaultMax);
+        System.out.println("[DEBUG] Valor inicial de max: " + max.get());
 
-        permissible.getEffectivePermissions().stream().map(PermissionAttachmentInfo::getPermission)
-                .map(String::toLowerCase).filter(value -> value.startsWith(permission))
-                .map(value -> value.replace(permission, "")).forEach(value -> {
+        permissible.getEffectivePermissions().stream()
+                .map(PermissionAttachmentInfo::getPermission)
+                .map(String::toLowerCase)
+                .filter(value -> value.startsWith(permission))
+                .map(value -> value.replace(permission, ""))
+                .forEach(value -> {
+                    System.out.println("[DEBUG] Procesando permiso: " + value);
+
                     if (value.equalsIgnoreCase("*")) {
+                        System.out.println("[DEBUG] Permiso '*' encontrado. Ajustando max a -1 (sin límite).");
                         max.set(-1);
                         return;
                     }
 
-                    if (max.get() == -1)
+                    if (max.get() == -1) {
+                        System.out.println("[DEBUG] max ya es -1, omitiendo procesamiento adicional.");
                         return;
+                    }
 
                     try {
                         int amount = Integer.parseInt(value);
+                        System.out.println("[DEBUG] Valor numérico del permiso: " + amount);
 
-                        if (amount > max.get())
+                        if (amount > max.get()) {
+                            System.out.println("[DEBUG] Nuevo valor máximo encontrado: " + amount);
                             max.set(amount);
+                        }
                     } catch (NumberFormatException ignored) {
+                        System.out.println("[DEBUG] Valor no numérico ignorado: " + value);
                     }
                 });
 
+        System.out.println("[DEBUG] Valor final de max: " + max.get());
         return max.get();
     }
+
 
     //
 
