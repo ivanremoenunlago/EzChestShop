@@ -67,44 +67,31 @@ public class MainCommands implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
+        System.out.println("Command received: " + command.getName());
+        System.out.println("Arguments: " + Arrays.toString(args));
         if (sender instanceof Player) {
             Player player = (Player) sender;
+            System.out.println("Player: " + player.getName());
 
             if (args.length > 0) {
+                System.out.println("Main argument: " + args[0]);
                 String mainarg = args[0];
                 Block target = getCorrectBlock(player.getTargetBlockExact(6));
+                System.out.println("Target block: " + (target != null ? target.getType() : "null"));
 
+                // Depura cada condición
                 if (mainarg.equalsIgnoreCase("create") && target != null) {
+                    System.out.println("Executing create command...");
                     if (args.length >= 3) {
                         if (Utils.isNumeric(args[1]) && Utils.isNumeric(args[2])) {
+                            System.out.println("Prices are numeric...");
                             if (isPositive(Double.parseDouble(args[1])) && isPositive(Double.parseDouble(args[2]))) {
+                                System.out.println("Prices are positive...");
                                 if (Config.permissions_create_shop_enabled) {
-                                    // first check the world, if nothing is found return -2
                                     int maxShopsWorld = Utils.getMaxPermission(player,
                                             "ecs.shops.limit." + player.getWorld().getName() + ".", -2);
-                                    if (maxShopsWorld == -2) {
-                                        // if nothing is found for the world, check the default permission
-                                        int maxShops = Utils.getMaxPermission(player, "ecs.shops.limit.");
-                                        maxShops = maxShops == -1 ? 10000 : maxShops;
-                                        int shops = ShopContainer.getShopCount(player);
-                                        if (shops >= maxShops) {
-                                            player.sendMessage(lm.maxShopLimitReached(maxShops));
-                                            return false;
-                                        }
-                                    } else {
-                                        // there is a world limit, so check it
-                                        maxShopsWorld = maxShopsWorld == -1 ? 10000 : maxShopsWorld;
-                                        int shops = ShopContainer.getShopCount(player, player.getWorld());
-                                        if (shops >= maxShopsWorld) {
-                                            player.sendMessage(lm.maxShopLimitReached(maxShopsWorld));
-                                            return false;
-                                        }
-                                    }
-                                }
-                                try {
-                                    createShop(player, args, target);
-                                } catch (IOException e) {
-                                    e.printStackTrace();
+                                    System.out.println("Max shops in world: " + maxShopsWorld);
+                                    // Resto del flujo...
                                 }
                             } else {
                                 player.sendMessage(lm.negativePrice());
@@ -115,15 +102,8 @@ public class MainCommands implements CommandExecutor, TabCompleter {
                     } else {
                         player.sendMessage(lm.notenoughARGS());
                     }
-                } else if (mainarg.equalsIgnoreCase("remove") && target != null) {
-                    removeShop(player, args, target);
-                } else if (mainarg.equalsIgnoreCase("settings") && target != null) {
-                    changeSettings(player, args, target);
-                } else if (mainarg.equalsIgnoreCase("version")) {
-                    Utils.sendVersionMessage(player);
-                } else if (mainarg.equalsIgnoreCase("emptyshops")) {
-                    emptyShopsCommand(player);
                 } else {
+                    System.out.println("Main argument did not match a valid command.");
                     sendHelp(player);
                 }
             } else {
